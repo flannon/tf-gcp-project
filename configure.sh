@@ -90,15 +90,14 @@ mkfile () {
   cat <<- MAKEFILE > Makefile
 .ONESHELL:
 .SHELL := /usr/bin/bash
-.PHONY: apply destroy destroy-target plan-destroy plan plan-target prep
+.PHONY: apply destroy destroy-target plan-destroy plan plan-target prep upgrade output
 PROJECT_ID=\$(shell gcloud config list --format 'value(core.project)' 2>/dev/null)
 #PROJECT_NAME=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(Name)')
 PROJECT=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(Name)')
 PROJECT_NUMBER=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(projectNumber)')
-SERVICE=\${GCP_SERVICE}
+SERVICE="$1"
 # Set bucket to terraform backend bucket name
-GCS_BUCKET="\$REMOTE_STATE_BUCKET"
-VARS="variables/\$(PROJECT)-\$(SERVICE).tfvars"
+GCS_BUCKET="${REMOTE_STATE_BUCKET}"
 PREFIX="/"
 CURRENT_FOLDER=\$(shell basename "\$\$(pwd)")
 BOLD=\$(shell tput bold)
@@ -226,6 +225,33 @@ ${TAB}${TAB}@echo "This feature will be available once we upgrade to tf 0.13""
 CBMKFILE
 }
 
+cbuild () {
+[[ -f cloudbuild.yaml ]] && echo "cloudbuild.yaml exists" && exit 2 || \
+  cat <<- CBUILD > cloudbuild.yaml
+# # To run the build manually do the following,
+#      \$ \`gcloud builds submit --config=cloudbuild.yaml .\`
+#
+
+steps:
+# Step 0
+- name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args: [ '-c', "gcloud secrets versions access latest --secret=account --format='get(payload.data)' | tr '_-' '/+' | base64 --decode > account.json" ]
+
+  # Step 1
+- name: 'gcr.io/\$PROJECT_ID/terraform'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    #make plan
+    terraform plan
+
+timeout: 1200s
+tags: ['terraform-gce']
+CBUILD
+}
+
 # Functions   !-
 
 # Configure cloudbuild !+
@@ -305,11 +331,12 @@ mv cloudbuild/dk cloudbuild/Dockerfile
 [[ ! -d project ]] && \
   mkdir project && \
   cd project && \
-  mkfile && \
+  mkfile project && \
+  cbuild && \
   cd - && \
   cat <<- PROJECT > project/main.tf
-data "google_project" "project {
-  project_id = \$PROJECT_ID
+data "google_project" "project" {
+  project_id = "${PROJECT_ID}"
 }
 PROJECT
 
@@ -317,13 +344,13 @@ PROJECT
   cat <<- VARIABLES > project/variables.tf
 variable project_remote_state_bucket_name {
   type = string
-  default = ""
+  default = "${REMOTE_STATE_BUCKET}"
   description = "terraform state backend bucket"
 }
 
 variable credentials_path {
   type        = string
-  default     = "\${ACCOUNTPATH}"
+  default     = "${ACCOUNTPATH}"
   description = "Location of the credential file."
 }
 
@@ -335,15 +362,15 @@ variable activate_apis {
   description = "The list of apis to activate within the project	"
 }
 
-variable environment {
-  type = string
-  description = "The ID of a folder hosting this project"
-}
+#variable environment {
+#  type = string
+#  description = "The ID of a folder hosting this project"
+#}
 
-variable environment_folder_id {
-  type = string
-  description = "The ID of a environment folder hosting this project"
-}
+#variable environment_folder_id {
+#  type = string
+#  description = "The ID of a environment folder hosting this project"
+#}
 
 variable labels {
   description = "Map of labels for project."
@@ -355,12 +382,13 @@ variable labels {
 
 variable project_home {
   description = "URI for the terraform state file"
+  default = ".."
   type = string
 }
 
 variable project_name {
   description = "Name of the project."
-  //default     = "project-factory"
+  default     = "${PROJECT_NAME}"
 }
 
 variable random_project_id {
@@ -376,15 +404,6 @@ variable service {
   description = "Then name og the GCP service instantiated by the module"
 }
 
-variable shared_vpc {
-  type = string
-  description = "Shared_VPC project_id"
-}
-
-variable shared_vpc_subnets {
-  type = list(string)
-  description = "Shared_VPC project_id"
-}
 VARIABLES
 
 [[ ! -f project/outputs.tf ]] && \
@@ -394,7 +413,7 @@ output credentials_path {
 }
 
 output prefix {
-value = "\${var.project_home}/\${var.service}"
+  value = "\${var.project_home}/\${var.service}"
 }
 
 output project_default_region {
@@ -444,16 +463,17 @@ labels = {
     "environment"   = ""
     "group"         = ""
     "managed_by"    = "terraform"
-    "project_name"  = "\${PROJECT_NAME}"
+    "project_name"  = "${PROJECT_NAME}"
 }
 
-region = "us-central1"
+region = "${REGION}"
 AUTO
 
 [[ ! -d iam ]] && \
   mkdir iam && \
   cd iam && \
-  mkfile && \
+  mkfile iam && \
+  cbuild && \
   cd - && \
   cat <<- MAIN > ./iam/main.tf
 terraform {
@@ -528,7 +548,7 @@ MAIN
   cat <<- VARS > ./iam/variables.tf
 variable credentials_path {
   type        = string
-  default     = "\${ACCOUNTPATH}"
+  default     = "${ACCOUNTPATH}"
   description = "Path to the .json file."
 }
 
@@ -608,7 +628,8 @@ AUTO
 [[ ! -d vpc ]] && \
   mkdir vpc && \
   cd vpc && \
-  mkfile && \
+  mkfile vpc && \
+  cbuild && \
   cd - && \
   cat <<- MAIN > ./vpc/main.tf
 // ------------------------------------------------------------
