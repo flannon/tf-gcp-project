@@ -25,6 +25,7 @@ _EOF_
 
 ACCOUNT="./account.json"
 ACCOUNT_CREDENTIALS_PATH="./account.json"
+PROJECT_HOME=".."
 GOOGLE_PROVIDER_VERSION="3.38.0"
 
 echo "Enter project_name:" && \
@@ -98,18 +99,10 @@ mkfile () {
   cat <<- MAKEFILE > Makefile
 .ONESHELL:
 .SHELL := /usr/bin/bash
-.PHONY: apply destroy destroy-target plan-destroy plan plan-target prep upgrade output build
+.PHONY: apply destroy destroy-target plan-destroy plan plan-target prep output build
 BUILD_CONFIG="cloudbuild.yaml"
 BUILD_DIR="."
-PROJECT_ID=\$(shell gcloud config list --format 'value(core.project)' 2>/dev/null)
-#PROJECT_NAME=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(Name)')
-PROJECT=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(Name)')
 PROJECT_NUMBER=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(projectNumber)')
-SERVICE="$1"
-# Set bucket to terraform backend bucket name
-GCS_BUCKET="${REMOTE_STATE_BUCKET}"
-GCP_CREDENTIALS="${ACCOUNT_CREDENTIALS_PATH}"
-PREFIX="${REMOTE_STATE_PREFIX}"
 CURRENT_FOLDER=\$(shell basename "\$\$(pwd)")
 BOLD=\$(shell tput bold)
 RED=\$(shell tput setaf 1)
@@ -123,30 +116,26 @@ help:
 ${TAB}@grep -E '^[a-zA-Z_-]+:.*?## .*\$\$' \$(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", \$\$1, \$\$2}'
 
 set-env:
-${TAB}@if [ -z \$(PROJECT) ]; then \
-${TAB}${TAB}echo "\$(BOLD)\$(RED)PROJECT was not set\$(RESET)"; \
-${TAB}${TAB}ERROR=1; \
-${TAB}fi
+##${TAB}@if [ -z \$(PROJECT) ]; then \
+##${TAB}${TAB}echo "\$(BOLD)\$(RED)PROJECT was not set\$(RESET)"; \
+##${TAB}${TAB}ERROR=1; \
+##${TAB}fi
 ${TAB}@if [ -z \$(SERVICE) ]; then \
 ${TAB}${TAB}echo "\$(BOLD)\$(RED)SERVICE was not set\$(RESET)"; \
 ${TAB}${TAB}ERROR=1; \
 ${TAB}fi
-${TAB}@if [ -z \$(GCP_CREDENTIALS) ]; then \
-${TAB}${TAB}echo "\$(BOLD)\$(RED)GCP_CREDENTIALS was not set.\$(RESET)"; \
-${TAB}${TAB}ERROR=1; \
-${TAB}fi
-${TAB}@if [ ! -z \$\${ERROR} ] && [ \$\${ERROR} -eq 1 ]; then \
-#${TAB}${TAB}echo "\$(BOLD)Example usage: \`GCP_CREDENTIALS=../account.json PROJECT=my_project SERVICE=vpc make plan\`\$(RESET)"; \
-${TAB}${TAB}exit 1; \
-${TAB}fi
+##${TAB}@if [ ! -z \$\${ERROR} ] && [ \$\${ERROR} -eq 1 ]; then \
+##${TAB}${TAB}echo "\$(BOLD)Example usage: \`CREDENTIALS=${ACCOUNT} PROJECT=my_project SERVICE=vpc make plan\`\$(RESET)"; \
+##${TAB}${TAB}exit 1; \
+##${TAB}fi
 
-prep: set-env ## Prepare a new workspace (environment) if needed, configure the tfstate backend, update any modules, and switch to the workspace
-${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(GCS_BUCKET) for remote state exists\$(RESET)"
-${TAB}@if ! gsutil ls -p \${PROJECT} gs://\${GCS_BUCKET} > /dev/null 2>&1 ; then \
-${TAB}${TAB}echo "\$(BOLD)GCS_BUCKET bucket \$(GCS_BUCKET) was not found, create a new bucket with versioning enabled to store tfstate\$(RESET)"; \
+prep: ## set-env ## Prepare a new workspace (environment) if needed, configure the tfstate backend, update any modules, and switch to the workspace
+##${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(BUCKET) for remote state exists\$(RESET)"
+${TAB}@if ! gsutil ls -p \$(PROJECT_ID) gs://\$(BUCKET) > /dev/null 2>&1 ; then \
+${TAB}${TAB}echo "\$(BOLD)BUCKET bucket \$(BUCKET) was not found, create a new bucket with versioning enabled to store tfstate\$(RESET)"; \
 ${TAB}${TAB}exit 1; \
 ${TAB}else
-${TAB}${TAB}echo "\$(BOLD)\$(GREEN)GCS_BUCKET bucket \$(GCS_BUCKET) exists\$(RESET)"; \
+${TAB}${TAB}echo "\$(BOLD)\$(GREEN)BUCKET bucket \$(BUCKET) exists\$(RESET)"; \
 ${TAB}fi
 ${TAB}@echo "\$(BOLD)Configuring the terraform backend\$(RESET)"
 ${TAB}@\$(TF_CMD) init \
@@ -155,9 +144,6 @@ ${TAB}${TAB}-reconfigure \
 ${TAB}${TAB}-upgrade \
 ${TAB}${TAB}-verify-plugins=true \
 ${TAB}${TAB}-backend=true \
-${TAB}${TAB}-backend-config="bucket=\${GCS_BUCKET}" \
-${TAB}${TAB}-backend-config="credentials=\$(GCP_CREDENTIALS)" \
-${TAB}${TAB}-backend-config="prefix=\${PREFIX}"
 
 plan: prep ## Show what terraform thinks it will do
 ${TAB}@\$(TF_CMD) plan \
@@ -199,9 +185,6 @@ ${TAB}${TAB}-auto-approve \
 ${TAB}${TAB}-refresh=true \
 ${TAB}${TAB}-target=\$\$DATA
 
-upgrade: prep ## Upgrade state to new terraform version
-${TAB}@\$(TF_CMD) 0.13upgrade
-
 output:
 ${TAB}@\$(TF_CMD) output
 
@@ -215,8 +198,7 @@ cbmkfile () {
 [[ -f Makefile  || -f makefile ]] && echo "Makefile exists" && exit 2 || \
   cat <<- CBMKFILE > Makefile
 .PHONY: build test
-#GCS_BUCKET="tf-state-73649"
-PROJECT_ID=\$(shell gcloud config list --format 'value(core.project)' 2>/dev/null)
+PROJECT_ID=\$(PROJECT_ID)
 PROJECT_NUMBER=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(projectNumber)')
 BUILD_CONFIG="cloudbuild.yaml"
 BUILD_DIR=\$(.)
@@ -228,7 +210,7 @@ YELLOW=\$(shell tput setaf 3)
 RESET=\$(shell tput sgr0)
 
 test:
-${TAB}${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(GCS_BUCKET) for remote state exists\$(RESET)"
+${TAB}${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(BUCKET) for remote state exists\$(RESET)"
 ${TAB}${TAB}@echo "\$(BOLD)Verifying the PROJECT_ID: \$(PROJECT_ID) \$(RESET)"
 ${TAB}${TAB}@echo "\$(BOLD)Verifying the PROJECT_NUMBER: \$(PROJECT_NUMBER) \$(RESET)"
 
@@ -259,10 +241,14 @@ steps:
   args:
   - '-c'
   - |
-    #make plan
-    #terraform plan
-    make set-env
-    make prep
+    make plan
+  env:
+    - TERM=xterm
+    - PROJECT_ID=\${PROJECT_ID}
+    - SERVICE=\${_SERVICE}
+
+substitutions:
+  _SERVICE: \${SERVICE}
 
 timeout: 1200s
 tags: ['terraform-gce']
@@ -275,9 +261,9 @@ echo "Line 272"
 # Configure cloudbuild !+
 [[ ! -d cloudbuild ]] && \
   mkdir cloudbuild && \
-#  cd cloudbuild && \
-#  cbmkfile && \
-#  cd - && \
+  cd cloudbuild && \
+  cbmkfile && \
+  cd - && \
   cat <<- CLOUDBUILD > cloudbuild/cloudbuild.yaml
 ## In this directory, run the following command to build this builder.
 ## $ \`gcloud builds submit --config=cloudbuild.yaml .\`
@@ -303,7 +289,7 @@ CLOUDBUILD
 
 echo "Line 301"
 [[ ! -f cloudbuild/Dockerfile ]] && \
-  cat <<- DOCKERFILE > cloudbuild/dk
+  cat <<- DOCKERFILE > cloudbuild/Dockerfile
 FROM alpine:3.9
 #FROM gcr.io/google.com/cloudsdktool/cloud-sdk:alpine
 
@@ -341,10 +327,7 @@ RUN yum -y update && yum -y install ca-certificates && \\
 COPY --from=0 terraform /usr/bin/terraform 
 
 ENTRYPOINT ["/usr/bin/terraform"] 
-
 DOCKERFILE
-
-mv cloudbuild/dk cloudbuild/Dockerfile
 
 
 echo "Line 349"
@@ -359,48 +342,49 @@ echo "Line 349"
 ## ------------------------------------------------------------
 ##   BACKEND BLOCK
 ## ------------------------------------------------------------
-#terraform {
-#  backend "gcs" {
-#    bucket = "${REMOTE_STATE_BUCKET}"
-#    prefix = "${REMOTE_STATE_PREFIX}"
-#  }
-#}
-#
-## ------------------------------------------------------------
-##   PROVIDER BLOCK
-## ------------------------------------------------------------
-#
-#provider "google" {
+terraform {
+  backend "gcs" {
+    bucket = "${REMOTE_STATE_BUCKET}"
+    prefix = "${REMOTE_STATE_PREFIX}"
+    credentials = "${ACCOUNT}"
+  }
+}
+
+# ------------------------------------------------------------
+#   PROVIDER BLOCK
+# ------------------------------------------------------------
+
+provider "google" {
+  credentials = file(var.credentials_path)
+  version = "~> 3.1"
+}
+
+provider "google-beta" {
 #  credentials = file(var.credentials_path)
-#  version = "~> 3.1"
-#}
-#
-#provider "google-beta" {
-#  credentials = file(var.credentials_path)
-#  version = "~> 3.1"
-#}
-#
-#provider "null" {
-#  version = "~> 2.1"
-#}
-#
-#provider "random" {
-#  version = "~> 2.2"
-#}
-#
-## ------------------------------------------------------------
-##   TERRAFORM REMOTE STATE
-## ------------------------------------------------------------
-#
-#data "google_project" "project" {
-#  project_id = "${PROJECT_ID}"
-#}
+  version = "~> 3.1"
+}
+
+provider "null" {
+  version = "~> 2.1"
+}
+
+provider "random" {
+  version = "~> 2.2"
+}
+
+# ------------------------------------------------------------
+#   TERRAFORM REMOTE STATE
+# ------------------------------------------------------------
+
+data "google_project" "project" {
+  project_id = "${PROJECT_ID}"
+}
 PROJECT
 
 echo "Line 396"
 [[ ! -f project/variables.tf ]] && \
   cat <<- VARIABLES > project/variables.tf
-variable project_remote_state_bucket_name {
+variable remote_state_bucket_name {
   type = string
   default = "${REMOTE_STATE_BUCKET}"
   description = "terraform state backend bucket"
@@ -439,14 +423,14 @@ variable disable_dependent_services {
 variable labels {
   description = "Map of labels for project."
   default = {
-    "environment" = "dev"
+    "environment" = ""
     "managed_by"  = "terraform"
   }
 }
 
 variable project_home {
   description = "URI for the terraform state file"
-  default = ".."
+  default = "${PROJECT_HOME}"
   type = string
 }
 
@@ -473,45 +457,45 @@ VARIABLES
 echo "Line 472"
 [[ ! -f project/outputs.tf ]] && \
   cat <<- OUTPUTS > project/outputs.tf
-#output credentials_path {
-#  value = var.credentials_path
-#}
-#
-#output prefix {
-#  value = "\${var.project_home}/\${var.service}"
-#}
-#
-#output project_default_region {
-#  value = var.region
-#}
-#
-#output project_id {
-#  value = data.google_project.project.project_id
-#}
-#
-#output project_labels {
-#  value = var.labels
-#}
-#
-#output project_name {
-#  value = data.google_project.project.project_name
-#}
-#
-#output project_number {
-#  value = module.project_factory.project_number
-#}
-#
-#output remote_state_bucket_name {
-#  value = var.remote_state_bucket_name
-#}
+output credentials_path {
+  value = var.credentials_path
+}
+
+output prefix {
+  value = "${REMOTE_STATE_PREFIX}"
+}
+
+output project_default_region {
+  value = var.region
+}
+
+output project_id {
+  value = data.google_project.project.project_id
+}
+
+output project_labels {
+  value = var.labels
+}
+
+output project_name {
+  value = var.project_name
+}
+
+output project_number {
+  value = var.project_number
+}
+
+output remote_state_bucket_name {
+  value = var.remote_state_bucket_name
+}
 OUTPUTS
 
 echo "LINE 509"
 [[ ! -f project/terraform.auto.tfvars.tf ]] && \
   cat <<- AUTO > project/terraform.auto.tfvars
-credentials_path = "../account.json"
+credentials_path = "./account.json"
 
-project_home = ".."
+project_home = "${PROJECT_HOME}"
 
 service = "project"
 
@@ -625,13 +609,25 @@ variable description {
 }
 
 variable project_home {
+  type        = string
+  default     = "${PROJECT_HOME}"
   description = "URI for the terraform state file"
-  type = string
 }
 
+variable project_name {
+  type        = string
+  default     = "${PROJECT_NAME}"
+  description = "URI for the terraform state file"
+}
+
+variable project_number {
+  type        = string
+  default     = "${PROJECT_NUMBER}"
+  description = "URI for the terraform state file"
+}
 variable remote_state_bucket_name {
   type = string
-  default = "\${REMOTE_STATE_BUCKET}"
+  default = "${REMOTE_STATE_BUCKET}"
   description = "terraform state backend bucket"
 }
 
@@ -684,16 +680,15 @@ echo "LINE 680"
 // Default org level variables required by all projects
 ////
 
-credentials_path = "../account.json"
+credentials_path = "${ACCOUNT}"
 
-project_home = ".."
+project_home = "${PROJECT_HOME}"
 
 ////
 // Service specific variables
 ////
 service = "iam"
 AUTO
-
 
 echo "LINE 698"
 [[ ! -d vpc ]] && \
@@ -756,59 +751,6 @@ data "terraform_remote_state" "shared-vpc" {
     prefix      = "\${local.project_home}/\${local.this_service}"
   }
 }
-
-////
-// local definitions
-////
-
-# ------------------------------------------------------------
-#   MAIN BLOCK
-# ------------------------------------------------------------
-
-#data "google_compute_network" "shared_vpc" {
-#  name    = var.network_name
-#  project = var.shared_vpc_project_id
-#}
-
-#data "google_compute_router" "nyu-ng-usc1" {
-#  name = "nyu-ng-usc1"
-#  network = data.google_compute_network.shared_vpc.self_link
-#  project = var.shared_vpc_project_id
-#  region  = "us-central1"
-#}
-
-#output "nyu-ng-usc1_id" {
-#  value = data.google_compute_router.nyu-ng-usc1.id
-#}
-
-#output "nyu-ng-usc1_self_link" {
-#  value = data.google_compute_router.nyu-ng-usc1.self_link
-#}
-
-#data "google_compute_router" "nyu-cl2" {
-#  name = "nyu-cl2"
-#  network = data.google_compute_network.shared_vpc.self_link
-#  project = var.shared_vpc_project_id
-#  region  = "us-east4"
-#}
-
-#output "nyu-cl2_id" {
-#  value = data.google_compute_router.nyu-cl2.id
-#}
-#
-#output "nyu-cl2-self_link" {
-#  value = data.google_compute_router.nyu-cl2.self_link
-#}
-
-#resource "google_compute_router" "fj5-lb-default" {
-#  name    = "fj5-lb-http-router"
-#  network = data.google_compute_network.shared_vpc.self_link
-#  project = var.shared_vpc_project_id
-#  region  = "us-central1"
-#}
-##output default_router_self_link {
-##  value = google_compute_router.fj5-lb-usc1-default.self_link
-##}
 MAIN
 
 
@@ -875,10 +817,9 @@ output default_router_creation_timestamp {
 output default_router_self_link {
   value = google_compute_router.default.self_link
 }
-
-
-echo "LINE 880"
 OUTPUTS
+
+
 [[ ! -f vpc/variables.tf ]] && \
   cat <<- VARIABLES > ./vpc/variables.tf
 //
@@ -887,7 +828,7 @@ OUTPUTS
 
 variable credentials_path {
   type        = string
-  default     = "../account.json"
+  default     = "./account.json"
   description = "Path to the .json file."
 }
 
@@ -920,9 +861,9 @@ echo "LINE 916"
 // Default org level variables required by all projects
 ////
 
-credentials_path = "../account.json"
+credentials_path = "./account.json"
 
-project_home = ".."
+project_home = "${PROJECT_HOME}"
 
 service = "vpc"
 
