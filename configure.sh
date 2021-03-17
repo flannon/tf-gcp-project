@@ -24,9 +24,13 @@ _EOF_
 [[ -d ./.terraform ]] && echo "Terraform configuration exits." && exit 1
 
 ACCOUNT="./account.json"
-ACCOUNT_CREDENTIALS_PATH="./account.json"
+CREDENTIALS_PATH="./account.json"
 PROJECT_HOME=".."
 GOOGLE_PROVIDER_VERSION="3.38.0"
+GOOGLE_BETA_PROVIDER_VERSION="3.38.0"
+NULL_PROVIDER_VERSION="2.1"
+NETWORK_MODULE_VERSION="2.5"
+RANDOM_PROVIDER_VERSION="2.2"
 
 echo "Enter project_name:" && \
 read PROJECT_NAME && \
@@ -92,8 +96,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --member serviceAccount:${PRO
 gcloud services enable cloudresourcemanager.googleapis.com
 
 
-# Functions   !+
 TAB="$(printf '\t')"
+SPACE="$(printf '\s')"
+NL="$(printf '\n')"
+
+# Functions   !+
 mkfile () {
 [[ -f Makefile  || -f makefile ]] && echo "Makefile exists" && exit 2 || \
   cat <<- MAKEFILE > Makefile
@@ -189,7 +196,8 @@ output:
 ${TAB}@\$(TF_CMD) output
 
 build:
-${TAB}@gcloud builds submit --config=\${BUILD_CONFIG} \${BUILD_DIR}
+${TAB}@gcloud builds submit --config=cloudbuild.yaml .
+
 MAKEFILE
 }
 
@@ -222,7 +230,7 @@ ${TAB}${TAB}@echo "This feature will be available once we upgrade to tf 0.13""
 CBMKFILE
 }
 
-cbuild () {
+cloudbuild () {
 [[ -f cloudbuild.yaml ]] && echo "cloudbuild.yaml exists" && exit 2 || \
   cat <<- CBUILD > cloudbuild.yaml
 # # To run the build manually do the following,
@@ -235,13 +243,18 @@ steps:
   entrypoint: 'bash'
   args: [ '-c', "gcloud secrets versions access latest --secret=account --format='get(payload.data)' | tr '_-' '/+' | base64 --decode > account.json" ]
 
-  # Step 1
+# Step 1
 - name: 'gcr.io/\$PROJECT_ID/terraform'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
+    make prep
+    terraform validate
     make plan
+    [[ \$? == 0 ]] && exit 0 ||  \\${NL}
+      [[ \$? == 1 ]] && echo "Plan failed with errors. exiting..." && exit 1 || \\${NL}
+        [[ \$? == 2 ]] && echo "running make apply" && make apply
   env:
     - TERM=xterm
     - PROJECT_ID=\${PROJECT_ID}
@@ -263,7 +276,7 @@ echo "Line 272"
   mkdir cloudbuild && \
   cd cloudbuild && \
   cbmkfile && \
-  cd - && \
+  cd - 2>&1 1>/dev/null && \
   cat <<- CLOUDBUILD > cloudbuild/cloudbuild.yaml
 ## In this directory, run the following command to build this builder.
 ## $ \`gcloud builds submit --config=cloudbuild.yaml .\`
@@ -291,7 +304,6 @@ echo "Line 301"
 [[ ! -f cloudbuild/Dockerfile ]] && \
   cat <<- DOCKERFILE > cloudbuild/Dockerfile
 FROM alpine:3.9
-#FROM gcr.io/google.com/cloudsdktool/cloud-sdk:alpine
 
 ARG TERRAFORM_VERSION=0.13.6
 ARG TERRAFORM_VERSION_SHA256SUM=55f2db00b05675026be9c898bdd3e8230ff0c5c78dd12d743ca38032092abfc9
@@ -330,22 +342,22 @@ ENTRYPOINT ["/usr/bin/terraform"]
 DOCKERFILE
 
 
-echo "Line 349"
+echo "Line 345"
 # Configure services !+ 
 [[ ! -d project ]] && \
   mkdir project && \
   cd project && \
   mkfile project && \
-  cbuild && \
+  cloudbuild && \
   cd - 2>&1 1>/dev/null && \
-  cat <<- PROJECT > project/main.tf
+  cat <<- PROJECTMAIN > project/main.tf
 ## ------------------------------------------------------------
 ##   BACKEND BLOCK
 ## ------------------------------------------------------------
 terraform {
   backend "gcs" {
     bucket = "${REMOTE_STATE_BUCKET}"
-    prefix = "${REMOTE_STATE_PREFIX}"
+    prefix = "/project"
     credentials = "${ACCOUNT}"
   }
 }
@@ -356,34 +368,44 @@ terraform {
 
 provider "google" {
   credentials = file(var.credentials_path)
-  version = "~> 3.1"
+  version = "~> ${GOOGLE_PROVIDER_VERSION}"
 }
 
 provider "google-beta" {
-#  credentials = file(var.credentials_path)
-  version = "~> 3.1"
+  credentials = file(var.credentials_path)
+  version = "~> ${GOOGLE_BETA_PROVIDER_VERSION}"
 }
 
 provider "null" {
-  version = "~> 2.1"
+  version = "~> ${NULL_PROVIDER_VERSION}"
 }
 
 provider "random" {
-  version = "~> 2.2"
+  version = "~> ${RANDOM_PROVIDER_VERSION}"
 }
 
-# ------------------------------------------------------------
-#   TERRAFORM REMOTE STATE
-# ------------------------------------------------------------
+// ------------------------------------------------------------
+//   TERRAFORM REMOTE STATE
+// ------------------------------------------------------------
+data "terraform_remote_state" "project" {
+  backend = "gcs"
+  config = {
+    bucket      = var.remote_state_bucket_name
+    credentials = var.credentials_path
+    prefix      = "/project"
+  }
+}
+
 
 data "google_project" "project" {
   project_id = "${PROJECT_ID}"
 }
-PROJECT
+
+PROJECTMAIN
 
 echo "Line 396"
 [[ ! -f project/variables.tf ]] && \
-  cat <<- VARIABLES > project/variables.tf
+  cat <<- PROJECTVARIABLES > project/variables.tf
 variable remote_state_bucket_name {
   type = string
   default = "${REMOTE_STATE_BUCKET}"
@@ -392,7 +414,7 @@ variable remote_state_bucket_name {
 
 variable credentials_path {
   type        = string
-  default     = "${ACCOUNT_CREDENTIALS_PATH}"
+  default     = "${CREDENTIALS_PATH}"
   description = "Location of the credential file."
 }
 
@@ -415,16 +437,12 @@ variable disable_dependent_services {
 #  description = "The ID of a folder hosting this project"
 #}
 
-#variable environment_folder_id {
-#  type = string
-#  description = "The ID of a environment folder hosting this project"
-#}
-
 variable labels {
   description = "Map of labels for project."
   default = {
     "environment" = ""
     "managed_by"  = "terraform"
+    "project"     = "${PROJECT_NAME}"
   }
 }
 
@@ -439,9 +457,9 @@ variable project_name {
   default     = "${PROJECT_NAME}"
 }
 
-variable random_project_id {
-  description = "Enable random number to the end of the project."
-  default     = true
+variable project_number {
+  description = "Name of the project."
+  default     = "${PROJECT_NUMBER}"
 }
 
 variable region {
@@ -451,12 +469,12 @@ variable region {
 variable service {
   description = "Then name og the GCP service instantiated by the module"
 }
+PROJECTVARIABLES
 
-VARIABLES
+echo "Line 451"
 
-echo "Line 472"
 [[ ! -f project/outputs.tf ]] && \
-  cat <<- OUTPUTS > project/outputs.tf
+  cat <<- PROJECTOUTPUTS > project/outputs.tf
 output credentials_path {
   value = var.credentials_path
 }
@@ -488,7 +506,7 @@ output project_number {
 output remote_state_bucket_name {
   value = var.remote_state_bucket_name
 }
-OUTPUTS
+PROJECTOUTPUTS
 
 echo "LINE 509"
 [[ ! -f project/terraform.auto.tfvars.tf ]] && \
@@ -520,17 +538,28 @@ region = "${REGION}"
 AUTO
 
 echo "LINE 538"
+
 [[ ! -d iam ]] && \
   mkdir iam && \
   cd iam && \
   mkfile iam && \
-  cbuild && \
+  cloudbuild && \
   cd - 2>&1 1>/dev/null && \
-  cat <<- MAIN > iam/main.tf
+  cat <<- IAMMAIN > iam/main.tf
+// ------------------------------------------------------------
+//   BACKEND BLOCK
+// ------------------------------------------------------------
 terraform {
-  backend "gcs" {}
+  backend "gcs" {
+    bucket = "tf-fj5-dev-7fb1"
+    prefix = "/iam"
+    credentials = "./account.json"
+  }
 }
 
+// ------------------------------------------------------------
+//   PROVIDER BLOCK
+// ------------------------------------------------------------
 provider "google" {
   credentials = file(var.credentials_path)
   version     = "\${GOOGLE_PROVIDER_VERSION}"
@@ -550,12 +579,15 @@ locals {
   this_service = "iam"
 }
 
+// ------------------------------------------------------------
+//   TERRAFORM REMOTE STATE
+// ------------------------------------------------------------
 data "terraform_remote_state" "project" {
   backend = "gcs"
   config = {
     bucket      = var.remote_state_bucket_name
     credentials = var.credentials_path
-    prefix      = "\${local.project_home}/project"
+    prefix      = "/project"
   }
 }
 
@@ -564,7 +596,7 @@ data "terraform_remote_state" "iam" {
   config = {
     bucket      = var.remote_state_bucket_name
     credentials = var.credentials_path
-    prefix      = "\${local.project_home}/\${local.this_service}"
+    prefix      = "/iam"
   }
 }
 
@@ -593,14 +625,14 @@ module "project-iam-bindings" {
       ]
   }
 }
-MAIN
+IAMMAIN
 
 echo "LINE 614"
 [[ ! -f iam/variables.tf ]] && \
-  cat <<- VARS > ./iam/variables.tf
+  cat <<- IAMVARS > ./iam/variables.tf
 variable credentials_path {
   type        = string
-  default     = "${ACCOUNT_CREDENTIALS_PATH}"
+  default     = "${CREDENTIALS_PATH}"
   description = "Path to the .json file."
 }
 
@@ -635,11 +667,11 @@ variable service {
   type = string
   description = "The GCP service amnaged by this module"
 }
-VARS
+IAMVARS
 
 echo "LINE 643"
 [[ ! -f iam/outputs.tf ]] && \
-  cat <<- OUTPUTS > ./iam/outputs.tf
+  cat <<- IAMOUTPUTS > ./iam/outputs.tf
 //
 // Service Outputs
 //
@@ -671,11 +703,12 @@ output "service_account_mig_name" {
 output "service_account_mig_unique_id" {
   value = google_service_account.instsvc0.unique_id
 }
-OUTPUTS
+IAMOUTPUTS
 
-echo "LINE 680"
+echo "LINE 677"
+
 [[ ! -f iam/terraform.auto.tfvars ]] && \
-  cat <<- AUTO > ./iam/terraform.auto.tfvars
+  cat <<- IAMAUTO > ./iam/terraform.auto.tfvars
 ////
 // Default org level variables required by all projects
 ////
@@ -688,75 +721,292 @@ project_home = "${PROJECT_HOME}"
 // Service specific variables
 ////
 service = "iam"
-AUTO
+IAMAUTO
 
-echo "LINE 698"
+echo "LINE 690"
+
 [[ ! -d vpc ]] && \
   mkdir vpc && \
   cd vpc && \
   mkfile vpc && \
-  cbuild && \
+  cloudbuild && \
   cd - 2>&1 1>/dev/null && \
-  cat <<- MAIN > ./vpc/main.tf
+  cat <<- VPCMAIN > ./vpc/main.tf
 // ------------------------------------------------------------
 //   BACKEND BLOCK
 // ------------------------------------------------------------
+// Values for the terraform block are provided by the Makefile
 terraform {
-  backend "gcs" {}
+  backend "gcs" {
+    bucket = "${REMOTE_STATE_BUCKET}"
+    prefix = "/vpc"
+    credentials = "${ACCOUNT}"
+  }
 }
 
-# ------------------------------------------------------------
-#   PROVIDER BLOCK
-# ------------------------------------------------------------
+// ------------------------------------------------------------
+//   PROVIDER BLOCK
+// ------------------------------------------------------------
 
 provider "google" {
   credentials = file(var.credentials_path)
-  version     = "~> 3.38.0"
+  version     = "~> ${GOOGLE_PROVIDER_VERSION}"
 }
 
 provider "google-beta" {
   credentials = file(var.credentials_path)
-  version     = "~> 3.38.0"
+  version     = "~> ${GOOGLE_BETA_PROVIDER_VERSION}"
 }
 
 provider "null" {
-  version = "~> 2.1"
+  version = "~> ${NULL_PROVIDER_VERSION}"
 }
 
-# ------------------------------------------------------------
-#   TERRAFORM REMOTE STATE
-# ------------------------------------------------------------
+// ------------------------------------------------------------
+//   TERRAFORM REMOTE STATE
+// ------------------------------------------------------------
 locals {
-  #bucket       = data.terraform_remote_state.project.outputs.remote_state_bucket_name
-  bucket            = var.remote_state_bucket_name
-  credentials_path  = var.credentials_path
-  project_home      = var.project_home
-  this_service      = var.service
+  project_home = var.project_home
+  this_service      = "vpc"
 }
 
 data "terraform_remote_state" "project" {
   backend = "gcs"
   config = {
-    bucket      = local.bucket
-    credentials = local.credentials_path
-    prefix      = "\${local.project_home}/project"
+    bucket      = var.remote_state_bucket_name
+    credentials = var.credentials_path
+    prefix      = "/project"
   }
 }
 
-data "terraform_remote_state" "shared-vpc" {
+data "terraform_remote_state" "compute" {
   backend = "gcs"
   config = {
-    bucket      = local.bucket
-    credentials = local.credentials_path
-    prefix      = "\${local.project_home}/\${local.this_service}"
+    bucket      = var.remote_state_bucket_name
+    credentials = var.credentials_path
+    prefix      = "/compute"
   }
 }
-MAIN
 
+data "terraform_remote_state" "vpc" {
+  backend = "gcs"
+  config = {
+    bucket      = var.remote_state_bucket_name
+    credentials = var.credentials_path
+    prefix      = "/vpc"
+  }
+}
+
+////
+// local definitions
+////
+locals {
+  subnet_01              = "\${data.terraform_remote_state.project.outputs.project_name}-subnet-01"
+  subnet_01_ip           = "192.168.1.0/24"
+  subnet_01_secondary_ip = "192.168.2.0/24"
+  subnet_01_description  = "ssh access"
+  subnet_02              = "\${data.terraform_remote_state.project.outputs.project_name}-subnet-02"
+  subnet_02_ip           = "10.10.20.0/24"
+  subnet_02_description  = "Subnet description"
+  subnet_03              = "\${data.terraform_remote_state.project.outputs.project_name}-subnet-03"
+  subnet_03_ip           = "10.10.30.0/24"
+  subnet_03_description  = "Subnet description"
+  subnet_03_region       = data.terraform_remote_state.project.outputs.project_default_region
+}
+
+# ------------------------------------------------------------
+#   MAIN BLOCK
+# ------------------------------------------------------------
+
+module "vpc" {
+  source  = "terraform-google-modules/network/google"
+  version = "~> ${NETWORK_MODULE_VERSION}"
+
+  project_id   = data.terraform_remote_state.project.outputs.project_id
+  network_name = "\${data.terraform_remote_state.project.outputs.project_name}-\${var.network_suffix}"
+  routing_mode = var.routing_mode
+  delete_default_internet_gateway_routes = false
+
+  subnets = [
+    {
+      subnet_name           = local.subnet_01
+      subnet_ip             = local.subnet_01_ip
+      subnet_region         = data.terraform_remote_state.project.outputs.project_default_region
+      subnet_private_access = true
+      subnet_flow_logs      = var.subnet_flow_logs
+      description           = local.subnet_01_description
+    },
+    {
+      subnet_name           = local.subnet_02
+      subnet_ip             = local.subnet_02_ip
+      subnet_region         = data.terraform_remote_state.project.outputs.project_default_region
+      subnet_private_access = true
+      subnet_flow_logs      = var.subnet_flow_logs
+      description           = local.subnet_02_description
+    },
+    {
+      subnet_name               = local.subnet_03
+      subnet_ip                 = local.subnet_03_ip
+      subnet_region             = data.terraform_remote_state.project.outputs.project_default_region
+      subnet_private_access     = true
+      subnet_flow_logs          = var.subnet_flow_logs
+      subnet_flow_logs_interval = "INTERVAL_10_MIN"
+      subnet_flow_logs_sampling = 0.7
+      subnet_flow_logs_metadata = "INCLUDE_ALL_METADATA"
+    },
+  ]
+
+  secondary_ranges = {
+      subnet_01 = [
+          {
+              range_name    = "subnet_01_secondary_ip"
+              ip_cidr_range = local.subnet_01_secondary_ip
+          },
+      ]
+
+      subnet_02 = []
+      subnet_03 = []
+  }
+
+  routes = [
+    {
+      name              = "tf-egress-internet"
+      description       = "route through the IGW to access the internet"
+      destination_range = "0.0.0.0/0"
+      tags              = "egress-inet"
+      next_hop_internet = true
+    },
+    // Example route to instance proxy
+    //{
+    //  name = "app-proxy"
+    //  description = "route through proxy to reach app"
+    //  destination_range = local.subnet_01_ip
+    //  tags              = "app-proxy"
+    //  next_hop_instance = "app-proxy-instance"
+    //  next_hop_instance_zone = "\${local.subnet_03_region}-a"
+    //},
+  ]
+}
+
+locals {
+  loadbalancer_addresses = ["130.211.0.0/22","35.191.0.0/16"]
+  iap_addresses          = ["35.235.240.0/20"]
+
+  allow-ingress-iap = {
+    description          = "Allow ssh INGRESS"
+    direction            = "INGRESS"
+    action               = "allow"
+    ranges               = local.iap_addresses
+    use_service_accounts = false # if \`true\` targets/sources expect list of instances SA, if false - list of tags
+    targets              = null  # target_service_accounts or target_tags depends on \`use_service_accounts\` value
+    sources              = null  # source_service_accounts or source_tags depends on \`use_service_accounts\` value
+    rules = [{
+     protocol = "tcp"
+      ports    = null
+      },
+      {
+        protocol = "udp"
+        ports    = null
+    }]
+    extra_attributes = {
+      disabled = false
+      priority = 95
+    }
+  } // !- allow-ingress-iap
+
+  allow-ingress-iap-ssh = {
+    description          = "Allow ssh INGRESS"
+    direction            = "INGRESS"
+    action               = "allow"
+    ranges               = local.iap_addresses
+    use_service_accounts = false # if \`true\` targets/sources expect list of instances SA, if false - list of tags
+    targets              = null  # target_service_accounts or target_tags depends on \`use_service_accounts\` value
+    sources              = null  # source_service_accounts or source_tags depends on \`use_service_accounts\` value
+    rules = [{
+      protocol = "tcp"
+      ports    = ["22"]
+      },
+      {
+        protocol = "udp"
+        ports    = null
+    }]
+
+    extra_attributes = {
+      disabled = false
+      priority = 95
+    }
+  } // !- allow-ingress-iap-ssh
+
+  allow-ingress-80-443-8080 = {
+    description          = "Allow all INGRESS to port 6534-6566"
+    direction            = "INGRESS"
+    action               = "allow"
+    ranges               = local.loadbalancer_addresses # source or destination ranges (depends on \`direction\`)
+    use_service_accounts = false # if \`true\` targets/sources expect list of instances SA, if false - list of tags
+    targets              = null  # target_service_accounts or target_tags depends on \`use_service_accounts\` value
+    sources              = null  # source_service_accounts or source_tags depends on \`use_service_accounts\` value
+    rules = [{
+      protocol = "tcp"
+      ports    = ["80","443","8080"]
+      },
+      {
+        protocol = "udp"
+        ports    = null
+    }]
+    extra_attributes = {
+      disabled = false
+      priority = 95
+    },
+  } // !- allow-ingress-80-443-8080
+} // !- locals
+
+
+module "firewall-submodule" {
+  source  = "terraform-google-modules/network/google//modules/fabric-net-firewall"
+  version = "~> ${NETWORK_MODULE_VERSION}"
+
+  project_id              = "\${data.terraform_remote_state.project.outputs.project_id}"
+  network                 = module.vpc.network_name
+  internal_ranges_enabled = true
+  internal_ranges         = module.vpc.subnets_ips
+
+  internal_allow = [
+    {
+      protocol = "icmp"
+    },
+    {
+      protocol = "tcp",
+      # all ports open if 'ports' key isn't specified
+    },
+    {
+      protocol = "udp"
+      # all ports open if 'ports' key isn't specified
+    },
+  ]
+  #custom_rules = local.custom_rules
+  custom_rules = {
+    #allow-ingress-22          = local.allow-ingress-22
+    allow-ingress-iap-ssh     = local.allow-ingress-iap-ssh
+    allow-ingress-80-443-8080 = local.allow-ingress-80-443-8080
+  }
+}
+
+locals {
+  router_name = "\${module.vpc.network_name}-router"
+  network     = data.terraform_remote_state.vpc.outputs.network_self_link
+  project_id  = data.terraform_remote_state.project.outputs.project_id
+  region      = data.terraform_remote_state.project.outputs.project_default_region
+}
+VPCMAIN
 
 echo "LINE 815"
+
 [[ ! -f vpc/outputs.tf ]] && \
-  cat <<- OUTPUTS > ./vpc/outputs.tf
+  cat <<- VPCOUTPUTS > ./vpc/outputs.tf
+//
+// VPC Outputs
+//
+
 output network_name {
   value = module.vpc.network_name
 }
@@ -800,78 +1050,93 @@ output subnets_self_links {
 output subnetworks_self_links {
   value = module.vpc.subnets_self_links
 }
-
-// router outputs
-output default_router_id {
-  value = google_compute_router.default.id
-}
-
-output default_router_name {
-  value = trimprefix(google_compute_router.default.id, "projects/\${data.terraform_remote_state.project.outputs.project_id}/regions/us-central1/routers/")
-}
-
-output default_router_creation_timestamp {
-  value = google_compute_router.default.creation_timestamp
-}
-
-output default_router_self_link {
-  value = google_compute_router.default.self_link
-}
-OUTPUTS
-
+VPCOUTPUTS
 
 [[ ! -f vpc/variables.tf ]] && \
-  cat <<- VARIABLES > ./vpc/variables.tf
-//
-// Project variables
-//
-
+  cat <<- VPCVARIABLES > ./vpc/variables.tf
 variable credentials_path {
-  type        = string
-  default     = "./account.json"
-  description = "Path to the .json file."
-}
-
-variable network_name {
-  type = string
-  description = "The network name from the Shared VPC"
-}
-
-variable project_home {
-  type = string
-  description = "Path to thhe project files. The statefile prefix has the form project_home/this-service"
+  type    = string
+  default = "${CREDENTIALS_PATH}"
 }
 
 variable remote_state_bucket_name {
-  type = string
-  default = "\$REMOTE_STATE_BUCKET"
-  description = "terraform state backend bucket"
+  type        = string
+  default     = "${REMOTE_STATE_BUCKET}"
 }
 
 variable service {
-  type = string
+  type        = string
+  default     = "vpc"
   description = "The GCP service managed by this module"
 }
-VARIABLES
+
+variable network_suffix {
+  description = "Name of the VPC."
+}
+
+variable project_home {
+  description = "URI for the terraform state file"
+  type = string
+}
+
+variable routing_mode {
+  description = "Routing mode. GLOBAL or REGIONAL"
+  default     = "GLOBAL"
+}
+
+variable subnet_name {
+  description = "Name of the subnet."
+}
+
+variable subnet_ip {
+  description = "Subnet IP CIDR."
+}
+
+variable subnet_region {
+  description = "Region subnet lives in."
+}
+
+variable subnet_private_access {
+  default = "true"
+}
+
+variable subnet_flow_logs {
+  default = "true"
+}
+VPCVARIABLES
 
 echo "LINE 916"
+
 [[ ! -f vpc/terraform.auto.tfvars ]] && \
-  cat <<- AUTO > ./vpc/terraform.auto.tfvars
+  cat <<- VPCAUTO > ./vpc/terraform.auto.tfvars
 //
 // Default org level variables required by all projects
 ////
 
-credentials_path = "./account.json"
+credentials_path         = "${CREDENTIALS_PATH}"
 
-project_home = "${PROJECT_HOME}"
+project_home             = "${PROJECT_HOME}"
 
-service = "vpc"
+network_name             = "${NETWORK}"
 
-network_name            = "\${NETWORK}"
+service                  = "vpc"
 
-remote_state_bucket_name = "\${REMOTE_STATE_BUCKET}"
+network_suffix           = "net"
 
-AUTO
+remote_state_bucket_name = "${REMOTE_STATE_BUCKET}"
+
+routing_mode             = "GLOBAL"
+
+subnet_flow_logs         = true
+
+subnet_ip                = "192.168.0.100/24"
+
+subnet_name              = "subnet-01"
+
+subnet_private_access    = true
+
+subnet_region            = "us-central1"
+VPCAUTO
 # Configure services !-
 
 echo "LINE 936"
@@ -883,5 +1148,4 @@ REPLY=$(echo $RESULT | sed 's/.*\(account\).*/\1/')
 
 
 
-echo "After secrets"
-## Set up cloudbuild to run tf
+echo "End"
