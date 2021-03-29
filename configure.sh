@@ -50,7 +50,8 @@ CONFIGPATH="${HOME}/.config/gcloud/configurations/config_${PROJECT_NAME}"
   #PROJECT_ID=$(grep project $CONFIGPATH | sed s/'project = '//) && \
   #PROJECT_NAME=$(gcloud projects list --filter=${PROJECT_NAME} --format='value(name)') && \
   ZONE=$(grep zone $CONFIGPATH | sed s/'zone = '//) && \
-  REGION=$(grep zone $CONFIGPATH | sed s/'region = '//) 
+  #REGION=$(echo $ZONE |  awk -F '=' '{  print $2 }' | sed 's/.\{2\}$//') && \
+  REGION=$(echo $ZONE |  sed 's/.\{2\}$//') && \
   
 gcloud config configurations activate $PROJECT_NAME
 
@@ -153,9 +154,10 @@ ${TAB}${TAB}-verify-plugins=true \
 ${TAB}${TAB}-backend=true \
 
 plan: prep ## Show what terraform thinks it will do
-${TAB}@\$(TF_CMD) plan \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-refresh=true \
+${TAB}@\$(TF_CMD) plan ${NL} \
+${TAB}${TAB}-input=false ${NL}\
+${TAB}${TAB}-refresh=true ${NL}\
+${TAB}${TAB}-detailed-exitcode ${NL}\
 
 plan-target: prep ## Shows what a plan looks like for applying a specific resource
 ${TAB}@echo "\$(YELLOW)\$(BOLD)[INFO]   \$(RESET)"; echo "Example to type for the following question: module.rds.aws_route53_record.rds-master"
@@ -252,9 +254,7 @@ steps:
     make prep
     terraform validate
     make plan
-    [[ \$? == 0 ]] && exit 0 ||  \\${NL}
-      [[ \$? == 1 ]] && echo "Plan failed with errors. exiting..." && exit 1 || \\${NL}
-        [[ \$? == 2 ]] && echo "running make apply" && make apply
+    [[ \$? == 2 ]] && echo "make apply" && make apply
   env:
     - TERM=xterm
     - PROJECT_ID=\${PROJECT_ID}
@@ -562,12 +562,12 @@ terraform {
 // ------------------------------------------------------------
 provider "google" {
   credentials = file(var.credentials_path)
-  version     = "\${GOOGLE_PROVIDER_VERSION}"
+  version     = "${GOOGLE_PROVIDER_VERSION}"
 }
 
 provider "google-beta" {
   credentials = file(var.credentials_path)
-  version     = "\${GOOGLE_PROVIDER_VERSION}"
+  version     = "${GOOGLE_PROVIDER_VERSION}"
 }
 
 provider "null" {
@@ -602,27 +602,27 @@ data "terraform_remote_state" "iam" {
 
 locals {
   svc_acct = "tf-project"
-  svc_acct_email = google_service_account.\${svc_acct}.email
+  svc_acct_email = "google_service_account.\${local.svc_acct}.email"
   project_id = data.terraform_remote_state.project.outputs.project_id
   svc_acct_def = "serviceAccount:\${local.svc_acct_email}"
 }
 
-resource "google_service_account" "tf_project" {
-  account_id   = local.svc_acct
-  display_name = local.svc_acct
-  project      = local.project_id
-}
+#resource "google_service_account" "tf_project" {
+#  account_id   = local.svc_acct
+#  display_name = local.svc_acct
+#  project      = local.project_id
+#}
 
 module "project-iam-bindings" {
   source   = "terraform-google-modules/iam/google//modules/projects_iam"
   version = "~> 5.1.0"
-  projects = ["\${data.terraform_remote_state.project.outputs.project_id}"]
+  projects = [data.terraform_remote_state.project.outputs.project_id,]
   mode     = "additive"
 
   bindings = {
-    "roles/owner" = [
-      "\${local.svc_acct_def}",
-      ]
+    #"roles/owner" = [
+    #  "\${local.svc_acct_def}",
+    #  ]
   }
 }
 IAMMAIN
@@ -676,33 +676,18 @@ echo "LINE 643"
 // Service Outputs
 //
 
-output members {
-  value = module.project-iam-bindings
-}
+#output members {
+#  value = module.project-iam-bindings
+#}
 
-output projects {
-  value = module.project-iam-bindings
-}
+#output projects {
+#  value = module.project-iam-bindings
+#}
 
-output roles {
-  value = module.project-iam-bindings
-}
+#output roles {
+#  value = module.project-iam-bindings
+#}
 
-output "service_account_mig_id" {
-  value = google_service_account.instsvc0.id
-}
-
-output "service_account_mig_email" {
-  value = google_service_account.instsvc0.email
-}
-
-output "service_account_mig_name" {
-  value = google_service_account.instsvc0.name
-}
-
-output "service_account_mig_unique_id" {
-  value = google_service_account.instsvc0.unique_id
-}
 IAMOUTPUTS
 
 echo "LINE 677"
@@ -801,6 +786,7 @@ data "terraform_remote_state" "vpc" {
 // local definitions
 ////
 locals {
+  region                 = data.terraform_remote_state.project.outputs.project_default_region
   subnet_01              = "\${data.terraform_remote_state.project.outputs.project_name}-subnet-01"
   subnet_01_ip           = "192.168.1.0/24"
   subnet_01_secondary_ip = "192.168.2.0/24"
@@ -812,6 +798,9 @@ locals {
   subnet_03_ip           = "10.10.30.0/24"
   subnet_03_description  = "Subnet description"
   subnet_03_region       = data.terraform_remote_state.project.outputs.project_default_region
+
+  router_name = "\${module.vpc.network_name}-router"
+  project_id  = data.terraform_remote_state.project.outputs.project_id
 }
 
 # ------------------------------------------------------------
@@ -965,7 +954,7 @@ module "firewall-submodule" {
   source  = "terraform-google-modules/network/google//modules/fabric-net-firewall"
   version = "~> ${NETWORK_MODULE_VERSION}"
 
-  project_id              = "\${data.terraform_remote_state.project.outputs.project_id}"
+  project_id              = data.terraform_remote_state.project.outputs.project_id
   network                 = module.vpc.network_name
   internal_ranges_enabled = true
   internal_ranges         = module.vpc.subnets_ips
@@ -991,12 +980,6 @@ module "firewall-submodule" {
   }
 }
 
-locals {
-  router_name = "\${module.vpc.network_name}-router"
-  network     = data.terraform_remote_state.vpc.outputs.network_self_link
-  project_id  = data.terraform_remote_state.project.outputs.project_id
-  region      = data.terraform_remote_state.project.outputs.project_default_region
-}
 VPCMAIN
 
 echo "LINE 815"
