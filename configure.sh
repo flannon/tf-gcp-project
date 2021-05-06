@@ -41,8 +41,10 @@ read PROJECT_ID  && \
 CONFIGPATH="${HOME}/.config/gcloud/configurations/config_${PROJECT_NAME}"
 
 [[ ! -f ${HOME}/.config/gcloud/configurations/config_fj5-dev ]] && \
-  echo "Enter default zone:" && \
+  echo "Enter default zone: " && \
   read ZONE && \
+  echo "Enter GCP email address: " && \
+  read GCP_EMAIL && \
 
   REGION=$(echo $ZONE | sed 's/.\{2\}$//') && \
   project_config || \
@@ -80,6 +82,11 @@ echo "terraform service account: $SA_NAME"
 [[ -z "$SA_STATE" ]] && \
   gcloud iam service-accounts create ${SA_NAME} 
 
+# enable apis
+gcloud services enable cloudresourcemanager.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable secretmanager.googleapis.com
+
 SA_STATE=$(gcloud iam service-accounts list --format='value("DISPLAY NAME")' --filter=${SA_NAME})
 [[ -z "$SA_STATE" ]] && \
   gcloud iam service-accounts update ${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com --display-name $SA_NAME && \
@@ -93,9 +100,6 @@ SA_STATE=$(gcloud iam service-accounts list --format='value("DISPLAY NAME")' --f
 gcloud projects add-iam-policy-binding $PROJECT_ID --member serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role roles/iam.serviceAccountUser && \
 gcloud projects add-iam-policy-binding $PROJECT_ID --member serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role roles/secretmanager.secretAccessor && \
 
-# enable apis
-gcloud services enable cloudresourcemanager.googleapis.com
-
 
 TAB="$(printf '\t')"
 SPACE="$(printf '\s')"
@@ -104,104 +108,13 @@ NL="$(printf '\n')"
 # Functions   !+
 mkfile () {
 [[ -f Makefile  || -f makefile ]] && echo "Makefile exists" && exit 2 || \
-  cat <<- MAKEFILE > Makefile
-.ONESHELL:
-.SHELL := /usr/bin/bash
-.PHONY: apply destroy destroy-target plan-destroy plan plan-target prep output build
-BUILD_CONFIG="cloudbuild.yaml"
-BUILD_DIR="."
-PROJECT_NUMBER=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(projectNumber)')
-CURRENT_FOLDER=\$(shell basename "\$\$(pwd)")
-BOLD=\$(shell tput bold)
-RED=\$(shell tput setaf 1)
-GREEN=\$(shell tput setaf 2)
-YELLOW=\$(shell tput setaf 3)
-RESET=\$(shell tput sgr0)
-TF_CMD="terraform"
-HELM_DEBUG="HELM_DEBUG=1"
 
-help:
-${TAB}@grep -E '^[a-zA-Z_-]+:.*?## .*\$\$' \$(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", \$\$1, \$\$2}'
+  echo "Lk9ORVNIRUxMOgouU0hFTEwgOj0gL3Vzci9iaW4vYmFzaAouUEhPTlk6IGFwcGx5IGRlc3Ryb3kgZGVzdHJveS10YXJnZXQgcGxhbi1kZXN0cm95IHBsYW4gcGxhbi10YXJnZXQgcHJlcCBvdXRwdXQgYnVpbGQgYnVpbGRwbGFuIGJ1aWxkYXBwbHkgMC4xM3VwZ3JhZGUKQlVDS0VUPSJ0Zi0ke1BST0pFQ1RfSUR9IgpCVUlMRF9DT05GSUc9ImNsb3VkYnVpbGQueWFtbCIKQlVJTERfRElSPSIuIgpQUk9KRUNUPSQoUFJPSkVDVF9JRCkKUFJPSkVDVF9OVU1CRVI9JChzaGVsbCBnY2xvdWQgcHJvamVjdHMgZGVzY3JpYmUgJChQUk9KRUNUX0lEKSAtLWZvcm1hdD0ndmFsdWUocHJvamVjdE51bWJlciknKQpTRVJWSUNFPSQoc2hlbGwgYmFzZW5hbWUgJHtQV0R9KQpDVVJSRU5UX0ZPTERFUj0kKHNoZWxsIGJhc2VuYW1lICIkJChwd2QpIikKQk9MRD0kKHNoZWxsIHRwdXQgYm9sZCkKUkVEPSQoc2hlbGwgdHB1dCBzZXRhZiAxKQpHUkVFTj0kKHNoZWxsIHRwdXQgc2V0YWYgMikKWUVMTE9XPSQoc2hlbGwgdHB1dCBzZXRhZiAzKQpSRVNFVD0kKHNoZWxsIHRwdXQgc2dyMCkKVEZfQ01EPSJ0ZXJyYWZvcm0iCkhFTE1fREVCVUc9IkhFTE1fREVCVUc9MSIKCmhlbHA6CglAZ3JlcCAtRSAnXlthLXpBLVpfLV0rOi4qPyMjIC4qJCQnICQoTUFLRUZJTEVfTElTVCkgfCBzb3J0IHwgYXdrICdCRUdJTiB7RlMgPSAiOi4qPyMjICJ9OyB7cHJpbnRmICJcMDMzWzM2bSUtMzBzXDAzM1swbSAlc1xuIiwgJCQxLCAkJDJ9JwoKc2V0LWVudjoKCUBpZiBbIC16ICQoUFJPSkVDVCkgXTsgdGhlbiBcCgkJZWNobyAiJChCT0xEKSQoUkVEKVBST0pFQ1Qgd2FzIG5vdCBzZXQkKFJFU0VUKSI7IFwKCQlFUlJPUj0xOyBcCglmaQoJQGlmIFsgLXogJChTRVJWSUNFKSBdOyB0aGVuIFwKCQllY2hvICIkKEJPTEQpJChSRUQpU0VSVklDRSB3YXMgbm90IHNldCQoUkVTRVQpIjsgXAoJCUVSUk9SPTE7IFwKCWZpCglAaWYgWyAhIC16ICQke0VSUk9SfSBdICYmIFsgJCR7RVJST1J9IC1lcSAxIF07IHRoZW4gXAoJCWVjaG8gIiQoQk9MRClFeGFtcGxlIHVzYWdlOiBcYENSRURFTlRJQUxTPS4uL2NyZWRlbnRpYWxzLmpzb24gUFJPSkVDVD1teV9wcm9qZWN0IFNFUlZJQ0U9cHJvamVjdCBtYWtlIHBsYW5cYCQoUkVTRVQpIjsgXAoJCWV4aXQgMTsgXAoJZmkKCnByZXA6IHNldC1lbnYgIyMgUHJlcGFyZSBhIG5ldyB3b3Jrc3BhY2UgKGVudmlyb25tZW50KSBpZiBuZWVkZWQsIGNvbmZpZ3VyZSB0aGUgdGZzdGF0ZSBiYWNrZW5kLCB1cGRhdGUgYW55IG1vZHVsZXMsIGFuZCBzd2l0Y2ggdG8gdGhlIHdvcmtzcGFjZQoJQGVjaG8gIiQoQk9MRClWZXJpZnlpbmcgdGhhdCB0aGUgR0NTIFN0b3JhZ2UgYnVja2V0ICQoQlVDS0VUKSBmb3IgcmVtb3RlIHN0YXRlIGV4aXN0cyQoUkVTRVQpIiAKCSMgU3RpbGwgbmVlZCB0byB0ZXN0IGlmICQoQlVDS0VUKSBleGlzdHMKCUBlY2hvICIkKEJPTEQpQ29uZmlndXJpbmcgdGhlIHRlcnJhZm9ybSBiYWNrZW5kJChSRVNFVCkiCglAJChURl9DTUQpIGluaXQgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLXJlY29uZmlndXJlIFwKCQktdXBncmFkZSBcCgkJLXZlcmlmeS1wbHVnaW5zPXRydWUgXAoJCS1iYWNrZW5kPXRydWUgCgpwbGFuOiBwcmVwICMjIFNob3cgd2hhdCB0ZXJyYWZvcm0gdGhpbmtzIGl0IHdpbGwgZG8KCUAkKFRGX0NNRCkgcGxhbiBcCgkJLWlucHV0PWZhbHNlIFwKCQktcmVmcmVzaD10cnVlIAoKcGxhbi10YXJnZXQ6IHByZXAgIyMgU2hvd3Mgd2hhdCBhIHBsYW4gbG9va3MgbGlrZSBmb3IgYXBwbHlpbmcgYSBzcGVjaWZpYyByZXNvdXJjZQoJQGVjaG8gIiQoWUVMTE9XKSQoQk9MRClbSU5GT10gICAkKFJFU0VUKSI7IGVjaG8gIkV4YW1wbGUgdG8gdHlwZSBmb3IgdGhlIGZvbGxvd2luZyBxdWVzdGlvbjogbW9kdWxlLnJkcy5hd3Nfcm91dGU1M19yZWNvcmQucmRzLW1hc3RlciIKCUByZWFkIC1wICJQTEFOIHRhcmdldDogIiBEQVRBICYmIFwKCQkkKFRGX0NNRCkgcGxhbiBcCgkJCS1pbnB1dD10cnVlIFwKCQkJLXJlZnJlc2g9dHJ1ZSBcCgkJCS10YXJnZXQ9JCREQVRBCgpwbGFuLWRlc3Ryb3k6IHByZXAgIyMgQ3JlYXRlcyBhIGRlc3RydWN0aW9uIHBsYW4uCglAJChURl9DTUQpIHBsYW4gXAoJCS1pbnB1dD1mYWxzZSBcCgkJLXJlZnJlc2g9dHJ1ZSBcCgkJLWRlc3Ryb3kgCgphcHBseTogcHJlcCAjIyBIYXZlIHRlcnJhZm9ybSBkbyB0aGUgdGhpbmdzLiBUaGlzIHdpbGwgY29zdCBtb25leS4KCUAkKFRGX0NNRCkgYXBwbHkgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLWF1dG8tYXBwcm92ZSBcCgkJLXJlZnJlc2g9dHJ1ZSAKCmRlc3Ryb3k6IHByZXAgIyMgRGVzdHJveSB0aGUgdGhpbmdzCglAJChURl9DTUQpIGRlc3Ryb3kgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLWF1dG8tYXBwcm92ZSBcCgkJLXJlZnJlc2g9dHJ1ZSAKCmRlc3Ryb3ktdGFyZ2V0OiBwcmVwICMjIERlc3Ryb3kgYSBzcGVjaWZpYyByZXNvdXJjZS4gQ2F1dGlvbiB0aG91Z2gsIHRoaXMgZGVzdHJveXMgY2hhaW5lZCByZXNvdXJjZXMuCglAZWNobyAiJChZRUxMT1cpJChCT0xEKVtJTkZPXSBTcGVjaWZpY2FsbHkgZGVzdHJveSBhIHBpZWNlIG9mIFRlcnJhZm9ybSBkYXRhLiQoUkVTRVQpIjsgZWNobyAiRXhhbXBsZSB0byB0eXBlIGZvciB0aGUgZm9sbG93aW5nIHF1ZXN0aW9uOiBtb2R1bGUucmRzLmF3c19yb3V0ZTUzX3JlY29yZC5yZHMtbWFzdGVyIgoJQHJlYWQgLXAgIkRlc3Ryb3kgdGFyZ2V0OiAiIERBVEEgJiYgXAoJCSQoVEZfQ01EKSBkZXN0cm95IFwKCQktaW5wdXQ9ZmFsc2UgXAoJCS1hdXRvLWFwcHJvdmUgXAoJCS1yZWZyZXNoPXRydWUgXAoJCS10YXJnZXQ9JCREQVRBCgpvdXRwdXQ6IHByZXAKCUAkKFRGX0NNRCkgb3V0cHV0CgojIyMKIyAgYnVpbGQgdGFyZ2V0cyBjYWxsIGNsb3VkIGJ1aWxkIHdoaWNoIHJ1bnMgdGFycmFmb3JtIHRhcmdldHMKIyMjCgpidWlsZDoKCUBnY2xvdWQgYnVpbGRzIHN1Ym1pdCAtLXN1YnN0aXR1dGlvbnM9X0JVSUxEU1RBVEU9InBsYW4iIC0tY29uZmlnPWNsb3VkYnVpbGQueWFtbCAuCgpidWlsZGFwcGx5OgoJQGdjbG91ZCBidWlsZHMgc3VibWl0IC0tc3Vic3RpdHV0aW9ucz1fQlVJTERTVEFURT0iYXBwbHkiIC0tY29uZmlnPWNsb3VkYnVpbGQueWFtbCAuCgpidWlsZHRlc3Q6CglAZ2Nsb3VkIGJ1aWxkcyBzdWJtaXQgLS1zdWJzdGl0dXRpb25zPV9CVUlMRFNUQVRFPSJwcmVwIiAtLWNvbmZpZz1jbG91ZGJ1aWxkLnlhbWwgLgo=" | base64 --decode > Makefile
 
-set-env:
-##${TAB}@if [ -z \$(PROJECT) ]; then \
-##${TAB}${TAB}echo "\$(BOLD)\$(RED)PROJECT was not set\$(RESET)"; \
-##${TAB}${TAB}ERROR=1; \
-##${TAB}fi
-${TAB}@if [ -z \$(SERVICE) ]; then \
-${TAB}${TAB}echo "\$(BOLD)\$(RED)SERVICE was not set\$(RESET)"; \
-${TAB}${TAB}ERROR=1; \
-${TAB}fi
-##${TAB}@if [ ! -z \$\${ERROR} ] && [ \$\${ERROR} -eq 1 ]; then \
-##${TAB}${TAB}echo "\$(BOLD)Example usage: \`CREDENTIALS=${ACCOUNT} PROJECT=my_project SERVICE=vpc make plan\`\$(RESET)"; \
-##${TAB}${TAB}exit 1; \
-##${TAB}fi
 
-prep: ## set-env ## Prepare a new workspace (environment) if needed, configure the tfstate backend, update any modules, and switch to the workspace
-##${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(BUCKET) for remote state exists\$(RESET)"
-${TAB}@if ! gsutil ls -p \$(PROJECT_ID) gs://\$(BUCKET) > /dev/null 2>&1 ; then \
-${TAB}${TAB}echo "\$(BOLD)BUCKET bucket \$(BUCKET) was not found, create a new bucket with versioning enabled to store tfstate\$(RESET)"; \
-${TAB}${TAB}exit 1; \
-${TAB}else
-${TAB}${TAB}echo "\$(BOLD)\$(GREEN)BUCKET bucket \$(BUCKET) exists\$(RESET)"; \
-${TAB}fi
-${TAB}@echo "\$(BOLD)Configuring the terraform backend\$(RESET)"
-${TAB}@\$(TF_CMD) init \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-reconfigure \
-${TAB}${TAB}-upgrade \
-${TAB}${TAB}-verify-plugins=true \
-${TAB}${TAB}-backend=true \
 
-plan: prep ## Show what terraform thinks it will do
-${TAB}@\$(TF_CMD) plan ${NL} \
-${TAB}${TAB}-input=false ${NL}\
-${TAB}${TAB}-refresh=true ${NL}\
-${TAB}${TAB}-detailed-exitcode ${NL}\
-
-plan-target: prep ## Shows what a plan looks like for applying a specific resource
-${TAB}@echo "\$(YELLOW)\$(BOLD)[INFO]   \$(RESET)"; echo "Example to type for the following question: module.rds.aws_route53_record.rds-master"
-${TAB}@read -p "PLAN target: " DATA && \
-${TAB}${TAB}\$(TF_CMD) plan \
-${TAB}${TAB}${TAB}-input=true \
-${TAB}${TAB}${TAB}-refresh=true \
-${TAB}${TAB}${TAB}-target=\$\$DATA
-
-plan-destroy: prep ## Creates a destruction plan.
-${TAB}@\$(TF_CMD) plan \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-refresh=true \
-${TAB}${TAB}-destroy \
-
-apply: prep ## Have terraform do the things. This will cost money.
-${TAB}@\$(HELM_DEBU) \$(TF_CMD) apply \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-auto-approve \
-${TAB}${TAB}-refresh=true \
-
-destroy: prep ## Destroy the things
-${TAB}@\$(TF_CMD) destroy \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-auto-approve \
-${TAB}${TAB}-refresh=true \
-
-destroy-target: prep ## Destroy a specific resource. Caution though, this destroys chained resources.
-${TAB}@echo "\$(YELLOW)\$(BOLD)[INFO] Specifically destroy a piece of Terraform data.\$(RESET)"; echo "Example to type for the following question: module.rds.aws_route53_record.rds-master"
-${TAB}@read -p "Destroy target: " DATA && \
-${TAB}${TAB}\$(TF_CMD) destroy \
-${TAB}${TAB}-input=false \
-${TAB}${TAB}-auto-approve \
-${TAB}${TAB}-refresh=true \
-${TAB}${TAB}-target=\$\$DATA
-
-output:
-${TAB}@\$(TF_CMD) output
-
-build:
-${TAB}@gcloud builds submit --config=cloudbuild.yaml .
-
-MAKEFILE
 }
+
 
 
 cbmkfile () {
@@ -220,7 +133,7 @@ YELLOW=\$(shell tput setaf 3)
 RESET=\$(shell tput sgr0)
 
 test:
-${TAB}${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(BUCKET) for remote state exists\$(RESET)"
+${TAB}${TAB}@echo "\$(BOLD)Verifying that the GCS Storage bucket \$(BUCKET) for remote state exists \$(RESET)"
 ${TAB}${TAB}@echo "\$(BOLD)Verifying the PROJECT_ID: \$(PROJECT_ID) \$(RESET)"
 ${TAB}${TAB}@echo "\$(BOLD)Verifying the PROJECT_NUMBER: \$(PROJECT_NUMBER) \$(RESET)"
 
@@ -228,8 +141,9 @@ build:
 ${TAB}${TAB}@gcloud builds submit --config=\${BUILD_CONFIG} \${BUILD_DIR}
 
 update:
-${TAB}${TAB}@echo "This feature will be available once we upgrade to tf 0.13""
+${TAB}${TAB}@echo "This feature will be available once we upgrade to tf 0.13"
 CBMKFILE
+
 }
 
 cloudbuild () {
