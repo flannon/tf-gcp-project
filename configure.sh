@@ -26,8 +26,8 @@ _EOF_
 ACCOUNT="./account.json"
 CREDENTIALS_PATH="./account.json"
 PROJECT_HOME=".."
-GOOGLE_PROVIDER_VERSION="3.38.0"
-GOOGLE_BETA_PROVIDER_VERSION="3.38.0"
+GOOGLE_PROVIDER_VERSION="3.65.0"
+GOOGLE_BETA_PROVIDER_VERSION="3.65.0"
 NULL_PROVIDER_VERSION="2.1"
 NETWORK_MODULE_VERSION="2.5"
 RANDOM_PROVIDER_VERSION="2.2"
@@ -111,17 +111,12 @@ mkfile () {
 
   echo "Lk9ORVNIRUxMOgouU0hFTEwgOj0gL3Vzci9iaW4vYmFzaAouUEhPTlk6IGFwcGx5IGRlc3Ryb3kgZGVzdHJveS10YXJnZXQgcGxhbi1kZXN0cm95IHBsYW4gcGxhbi10YXJnZXQgcHJlcCBvdXRwdXQgYnVpbGQgYnVpbGRwbGFuIGJ1aWxkYXBwbHkgMC4xM3VwZ3JhZGUKQlVDS0VUPSJ0Zi0ke1BST0pFQ1RfSUR9IgpCVUlMRF9DT05GSUc9ImNsb3VkYnVpbGQueWFtbCIKQlVJTERfRElSPSIuIgpQUk9KRUNUPSQoUFJPSkVDVF9JRCkKUFJPSkVDVF9OVU1CRVI9JChzaGVsbCBnY2xvdWQgcHJvamVjdHMgZGVzY3JpYmUgJChQUk9KRUNUX0lEKSAtLWZvcm1hdD0ndmFsdWUocHJvamVjdE51bWJlciknKQpTRVJWSUNFPSQoc2hlbGwgYmFzZW5hbWUgJHtQV0R9KQpDVVJSRU5UX0ZPTERFUj0kKHNoZWxsIGJhc2VuYW1lICIkJChwd2QpIikKQk9MRD0kKHNoZWxsIHRwdXQgYm9sZCkKUkVEPSQoc2hlbGwgdHB1dCBzZXRhZiAxKQpHUkVFTj0kKHNoZWxsIHRwdXQgc2V0YWYgMikKWUVMTE9XPSQoc2hlbGwgdHB1dCBzZXRhZiAzKQpSRVNFVD0kKHNoZWxsIHRwdXQgc2dyMCkKVEZfQ01EPSJ0ZXJyYWZvcm0iCkhFTE1fREVCVUc9IkhFTE1fREVCVUc9MSIKCmhlbHA6CglAZ3JlcCAtRSAnXlthLXpBLVpfLV0rOi4qPyMjIC4qJCQnICQoTUFLRUZJTEVfTElTVCkgfCBzb3J0IHwgYXdrICdCRUdJTiB7RlMgPSAiOi4qPyMjICJ9OyB7cHJpbnRmICJcMDMzWzM2bSUtMzBzXDAzM1swbSAlc1xuIiwgJCQxLCAkJDJ9JwoKc2V0LWVudjoKCUBpZiBbIC16ICQoUFJPSkVDVCkgXTsgdGhlbiBcCgkJZWNobyAiJChCT0xEKSQoUkVEKVBST0pFQ1Qgd2FzIG5vdCBzZXQkKFJFU0VUKSI7IFwKCQlFUlJPUj0xOyBcCglmaQoJQGlmIFsgLXogJChTRVJWSUNFKSBdOyB0aGVuIFwKCQllY2hvICIkKEJPTEQpJChSRUQpU0VSVklDRSB3YXMgbm90IHNldCQoUkVTRVQpIjsgXAoJCUVSUk9SPTE7IFwKCWZpCglAaWYgWyAhIC16ICQke0VSUk9SfSBdICYmIFsgJCR7RVJST1J9IC1lcSAxIF07IHRoZW4gXAoJCWVjaG8gIiQoQk9MRClFeGFtcGxlIHVzYWdlOiBcYENSRURFTlRJQUxTPS4uL2NyZWRlbnRpYWxzLmpzb24gUFJPSkVDVD1teV9wcm9qZWN0IFNFUlZJQ0U9cHJvamVjdCBtYWtlIHBsYW5cYCQoUkVTRVQpIjsgXAoJCWV4aXQgMTsgXAoJZmkKCnByZXA6IHNldC1lbnYgIyMgUHJlcGFyZSBhIG5ldyB3b3Jrc3BhY2UgKGVudmlyb25tZW50KSBpZiBuZWVkZWQsIGNvbmZpZ3VyZSB0aGUgdGZzdGF0ZSBiYWNrZW5kLCB1cGRhdGUgYW55IG1vZHVsZXMsIGFuZCBzd2l0Y2ggdG8gdGhlIHdvcmtzcGFjZQoJQGVjaG8gIiQoQk9MRClWZXJpZnlpbmcgdGhhdCB0aGUgR0NTIFN0b3JhZ2UgYnVja2V0ICQoQlVDS0VUKSBmb3IgcmVtb3RlIHN0YXRlIGV4aXN0cyQoUkVTRVQpIiAKCSMgU3RpbGwgbmVlZCB0byB0ZXN0IGlmICQoQlVDS0VUKSBleGlzdHMKCUBlY2hvICIkKEJPTEQpQ29uZmlndXJpbmcgdGhlIHRlcnJhZm9ybSBiYWNrZW5kJChSRVNFVCkiCglAJChURl9DTUQpIGluaXQgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLXJlY29uZmlndXJlIFwKCQktdXBncmFkZSBcCgkJLXZlcmlmeS1wbHVnaW5zPXRydWUgXAoJCS1iYWNrZW5kPXRydWUgCgpwbGFuOiBwcmVwICMjIFNob3cgd2hhdCB0ZXJyYWZvcm0gdGhpbmtzIGl0IHdpbGwgZG8KCUAkKFRGX0NNRCkgcGxhbiBcCgkJLWlucHV0PWZhbHNlIFwKCQktcmVmcmVzaD10cnVlIAoKcGxhbi10YXJnZXQ6IHByZXAgIyMgU2hvd3Mgd2hhdCBhIHBsYW4gbG9va3MgbGlrZSBmb3IgYXBwbHlpbmcgYSBzcGVjaWZpYyByZXNvdXJjZQoJQGVjaG8gIiQoWUVMTE9XKSQoQk9MRClbSU5GT10gICAkKFJFU0VUKSI7IGVjaG8gIkV4YW1wbGUgdG8gdHlwZSBmb3IgdGhlIGZvbGxvd2luZyBxdWVzdGlvbjogbW9kdWxlLnJkcy5hd3Nfcm91dGU1M19yZWNvcmQucmRzLW1hc3RlciIKCUByZWFkIC1wICJQTEFOIHRhcmdldDogIiBEQVRBICYmIFwKCQkkKFRGX0NNRCkgcGxhbiBcCgkJCS1pbnB1dD10cnVlIFwKCQkJLXJlZnJlc2g9dHJ1ZSBcCgkJCS10YXJnZXQ9JCREQVRBCgpwbGFuLWRlc3Ryb3k6IHByZXAgIyMgQ3JlYXRlcyBhIGRlc3RydWN0aW9uIHBsYW4uCglAJChURl9DTUQpIHBsYW4gXAoJCS1pbnB1dD1mYWxzZSBcCgkJLXJlZnJlc2g9dHJ1ZSBcCgkJLWRlc3Ryb3kgCgphcHBseTogcHJlcCAjIyBIYXZlIHRlcnJhZm9ybSBkbyB0aGUgdGhpbmdzLiBUaGlzIHdpbGwgY29zdCBtb25leS4KCUAkKFRGX0NNRCkgYXBwbHkgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLWF1dG8tYXBwcm92ZSBcCgkJLXJlZnJlc2g9dHJ1ZSAKCmRlc3Ryb3k6IHByZXAgIyMgRGVzdHJveSB0aGUgdGhpbmdzCglAJChURl9DTUQpIGRlc3Ryb3kgXAoJCS1pbnB1dD1mYWxzZSBcCgkJLWF1dG8tYXBwcm92ZSBcCgkJLXJlZnJlc2g9dHJ1ZSAKCmRlc3Ryb3ktdGFyZ2V0OiBwcmVwICMjIERlc3Ryb3kgYSBzcGVjaWZpYyByZXNvdXJjZS4gQ2F1dGlvbiB0aG91Z2gsIHRoaXMgZGVzdHJveXMgY2hhaW5lZCByZXNvdXJjZXMuCglAZWNobyAiJChZRUxMT1cpJChCT0xEKVtJTkZPXSBTcGVjaWZpY2FsbHkgZGVzdHJveSBhIHBpZWNlIG9mIFRlcnJhZm9ybSBkYXRhLiQoUkVTRVQpIjsgZWNobyAiRXhhbXBsZSB0byB0eXBlIGZvciB0aGUgZm9sbG93aW5nIHF1ZXN0aW9uOiBtb2R1bGUucmRzLmF3c19yb3V0ZTUzX3JlY29yZC5yZHMtbWFzdGVyIgoJQHJlYWQgLXAgIkRlc3Ryb3kgdGFyZ2V0OiAiIERBVEEgJiYgXAoJCSQoVEZfQ01EKSBkZXN0cm95IFwKCQktaW5wdXQ9ZmFsc2UgXAoJCS1hdXRvLWFwcHJvdmUgXAoJCS1yZWZyZXNoPXRydWUgXAoJCS10YXJnZXQ9JCREQVRBCgpvdXRwdXQ6IHByZXAKCUAkKFRGX0NNRCkgb3V0cHV0CgojIyMKIyAgYnVpbGQgdGFyZ2V0cyBjYWxsIGNsb3VkIGJ1aWxkIHdoaWNoIHJ1bnMgdGFycmFmb3JtIHRhcmdldHMKIyMjCgpidWlsZDoKCUBnY2xvdWQgYnVpbGRzIHN1Ym1pdCAtLXN1YnN0aXR1dGlvbnM9X0JVSUxEU1RBVEU9InBsYW4iIC0tY29uZmlnPWNsb3VkYnVpbGQueWFtbCAuCgpidWlsZGFwcGx5OgoJQGdjbG91ZCBidWlsZHMgc3VibWl0IC0tc3Vic3RpdHV0aW9ucz1fQlVJTERTVEFURT0iYXBwbHkiIC0tY29uZmlnPWNsb3VkYnVpbGQueWFtbCAuCgpidWlsZHRlc3Q6CglAZ2Nsb3VkIGJ1aWxkcyBzdWJtaXQgLS1zdWJzdGl0dXRpb25zPV9CVUlMRFNUQVRFPSJwcmVwIiAtLWNvbmZpZz1jbG91ZGJ1aWxkLnlhbWwgLgo=" | base64 --decode > Makefile
 
-
-
 }
-
-
 
 cbmkfile () {
 [[ -f Makefile  || -f makefile ]] && echo "Makefile exists" && exit 2 || \
   cat <<- CBMKFILE > Makefile
 .PHONY: build test
-PROJECT_ID=\$(PROJECT_ID)
 PROJECT_NUMBER=\$(shell gcloud projects describe \$(PROJECT_ID) --format='value(projectNumber)')
 BUILD_CONFIG="cloudbuild.yaml"
 BUILD_DIR=\$(.)
@@ -139,9 +134,6 @@ ${TAB}${TAB}@echo "\$(BOLD)Verifying the PROJECT_NUMBER: \$(PROJECT_NUMBER) \$(R
 
 build:
 ${TAB}${TAB}@gcloud builds submit --config=\${BUILD_CONFIG} \${BUILD_DIR}
-
-update:
-${TAB}${TAB}@echo "This feature will be available once we upgrade to tf 0.13"
 CBMKFILE
 
 }
@@ -157,7 +149,11 @@ steps:
 # Step 0
 - name: 'gcr.io/cloud-builders/gcloud'
   entrypoint: 'bash'
-  args: [ '-c', "gcloud secrets versions access latest --secret=account --format='get(payload.data)' | tr '_-' '/+' | base64 --decode > account.json" ]
+  args:  
+  - '-c' 
+  - |
+    gcloud secrets versions access latest --secret=account --format='get(payload.data)' \
+     | tr '_-' '/+' | base64 --decode > account.json
 
 # Step 1
 - name: 'gcr.io/\$PROJECT_ID/terraform'
@@ -165,10 +161,9 @@ steps:
   args:
   - '-c'
   - |
-    make prep
-    terraform validate
-    make plan
-    [[ \$? == 2 ]] && echo "make apply" && make apply
+    [[ -d .terraform ]] && rm -rf .terraform
+    [[ -L account.json ]] && unlink account.json
+    make \${_BUILDSTATE} 
   env:
     - TERM=xterm
     - PROJECT_ID=\${PROJECT_ID}
@@ -176,6 +171,7 @@ steps:
 
 substitutions:
   _SERVICE: \${SERVICE}
+  _BUILDSTATE: not
 
 timeout: 1200s
 tags: ['terraform-gce']
@@ -465,9 +461,9 @@ echo "LINE 538"
 // ------------------------------------------------------------
 terraform {
   backend "gcs" {
-    bucket = "tf-fj5-dev-7fb1"
+    bucket = "${REMOTE_STATE_BUCKET}"
     prefix = "/iam"
-    credentials = "./account.json"
+    credentials = "account.json"
   }
 }
 
